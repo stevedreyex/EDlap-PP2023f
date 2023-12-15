@@ -2,7 +2,7 @@ all:
 	gcc seq.c -lpng -o seq.o
 	gcc omp.c -lpng -fopenmp -o omp.o
 	mpicc mpi.c -lpng -o mpi.o
-	nvcc host.cu kernel.cu -lpng -g -o cuda.o
+	nvcc -O3 host.cu kernel.cu -lpng -g -o cuda.o
 
 seq:
 	./seq.o test-image.png

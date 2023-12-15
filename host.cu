@@ -14,7 +14,7 @@
 
 #define MAX_BRIGHTNESS 255
 #define GetValue(a) ((a)&0xff)
-#define ITERATION_NUM 10
+#define ITERATION_NUM 1
 
 #define png_infopp_NULL (png_infopp)NULL
 #define int_p_NULL (int*)NULL
@@ -183,37 +183,46 @@ int main( int argc, char* argv[] )
 	//clock_t begin = clock();
 	Image* img1 = image_load( argv[1] );				//Input Image
 	Image* img3 = image_create( img1->width, img1->height );	//Output Image
-	printf("++++++++++++++++++++++++++++++++++\n\tSequential Version\t\n++++++++++++++++++++++++++++++++++\n");	
+	printf("++++++++++++++++++++++++++++++++++\n\tAccelerated Version\t\n++++++++++++++++++++++++++++++++++\n");	
 	printf("time spent in sequential code with %d iterations\n", ITERATION_NUM);
 	int i;
-	Image* dev_img1;
-	Image* dev_img3;
+	Image* dev_img1 = (Image*)malloc(sizeof(Image));
+	Image* dev_img3 = (Image*)malloc(sizeof(Image));
+	unsigned *d_in;
+	unsigned *d_out;
+	dev_img1->width = img1->width;
+	dev_img1->height = img1->height;
+	dev_img3->width = img1->width;
+	dev_img3->height = img1->height;
 
+	float gpu_time = 0.0f;
+	float avg_time = 0.0f;
+	cudaEvent_t start, stop;
+	cudaCheckReturn(cudaEventCreate(&start));
+	cudaCheckReturn(cudaEventCreate(&stop));
+	dim3 dimBlock( BLOCK_X, BLOCK_Y );
+	dim3 dimGrid( (img1->width) / dimBlock.x, (img1->height) / dimBlock.y );
+
+	cudaCheckReturn(cudaMalloc( (void**)&d_in, img1->height * img1->width * sizeof( unsigned ) ));
+	cudaCheckReturn(cudaMalloc( (void**)&d_out, img1->height * img1->width * sizeof( unsigned ) ));
+	cudaCheckReturn(cudaMemcpy( d_in, img1->data, img1->height * img1->width * sizeof( unsigned ), cudaMemcpyHostToDevice ));
 	//repeating process to extract best time
 	for ( i = 1; i<=ITERATION_NUM; i++)
 	{
-		float gpu_time = 0.0f;
-		cudaEvent_t start, stop;
-  		cudaCheckReturn(cudaEventCreate(&start));
-  		cudaCheckReturn(cudaEventCreate(&stop));
-		dim3 dimBlock( BLOCK_X, BLOCK_Y );
-		dim3 dimGrid( (img1->width) / dimBlock.x, (img1->height) / dimBlock.y );
-		cudaCheckReturn(cudaMalloc( (void**)&dev_img1, sizeof( Image ) ));
-		cudaCheckReturn(cudaMalloc( (void**)&dev_img3, sizeof( Image ) ));
-		cudaCheckReturn(cudaMemcpy( dev_img1, img1, sizeof( Image ), cudaMemcpyHostToDevice ));
 		cudaEventRecord(start, 0);
 
-		stencilCUDA<<<dimGrid, dimBlock>>>( dev_img1, dev_img3 );
+		stencilCUDA<<<dimGrid, dimBlock>>>( img1->width, img1->height, d_in, d_out );
 		cudaCheckKernel();
 
 		cudaEventRecord(stop, 0);
 		cudaEventSynchronize(stop);
 		cudaCheckReturn(cudaEventElapsedTime(&gpu_time, start, stop));
-		cudaCheckReturn(cudaMemcpy( img3, dev_img3, sizeof( Image ), cudaMemcpyDeviceToHost ));	
-		printf("iteration: %d \t time: %f sec\n",i, gpu_time);
+		printf("iteration: %d \t time: %f msec\n",i, gpu_time);
+		avg_time += gpu_time;
 	}
-	//printf("++++++++++++++++++++++++++++++++++++\nAvg timing is: %f sec\n++++++++++++++++++++++++++++++++++++\n",(avg_time/CLOCKS_PER_SEC)/ITERATION_NUM);
-	image_save( img3, "output_seq.png" );
+	cudaCheckReturn(cudaMemcpy( img3->data, d_out, img1->height * img1->width * sizeof( unsigned ), cudaMemcpyDeviceToHost ));	
+	printf("++++++++++++++++++++++++++++++++++++\nAvg timing is: %f sec\n++++++++++++++++++++++++++++++++++++\n",(avg_time/CLOCKS_PER_SEC)/ITERATION_NUM);
+	image_save( img3, "output_cuda_scratch.png" );
 	cudaFree( dev_img1 );
 	cudaFree( dev_img3 );
 

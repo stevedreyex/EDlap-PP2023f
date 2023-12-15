@@ -1,0 +1,17 @@
+++++++++++++++++++++++++++++++++++
+        Accelerated Version
+++++++++++++++++++++++++++++++++++
+time spent in sequential code with 10 iterations
+iteration: 1     time: 48.467457 msec
+iteration: 2     time: 47.787743 msec
+iteration: 3     time: 46.172382 msec
+iteration: 4     time: 43.940544 msec
+iteration: 5     time: 43.339039 msec
+iteration: 6     time: 41.170303 msec
+iteration: 7     time: 39.847713 msec
+iteration: 8     time: 39.232990 msec
+iteration: 9     time: 37.733696 msec
+iteration: 10    time: 36.742943 msec
+++++++++++++++++++++++++++++++++++++
+        End of GPU Version
+++++++++++++++++++++++++++++++++++++

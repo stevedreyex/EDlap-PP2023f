@@ -8,6 +8,6 @@ typedef struct _Image {
 } Image;
 
 
-__global__ void stencilCUDA(Image* in, Image* out);
+__global__ void stencilCUDA(int width, int height, unsigned *d_in, unsigned *d_out);
 
 #endif /* KERNEL_H_ */
