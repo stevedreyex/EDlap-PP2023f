@@ -2,22 +2,18 @@ all:
 	gcc seq.c -lpng -o seq.o
 	gcc omp.c -lpng -fopenmp -o omp.o
 	mpicc mpi.c -lpng -o mpi.o
-	nvcc -O3 host.cu kernel.cu -lpng -g -o cuda.o
 
 seq:
-	./seq.o test-image.png
+	./seq.o rem.png
 
 omp:
-	./omp.o test-image.png 
+	./omp.o rem.png 
 
 openmpi:
 	sbatch mpi.job
 
 mpi:	
-	mpirun -np 10 ./mpi.o test-image.png
-
-cuda:
-	./cuda.o test-image.png
+	mpirun -np 10 ./mpi.o rem.png
 
 clean: 
 	rm *.o
