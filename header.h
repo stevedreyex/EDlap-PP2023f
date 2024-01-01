@@ -7,7 +7,7 @@ typedef struct _Image {
 
 #define MAX_BRIGHTNESS 255
 #define GetValue(a) ((a)&0xff)
-#define ITERATION_NUM 10
+#define ITERATION_NUM 100
 
 #define png_infopp_NULL (png_infopp)NULL
 #define int_p_NULL (int*)NULL
@@ -23,12 +23,15 @@ void stencilCode(Image* in, Image* out);
 void stencilCodeOMP( Image* in, Image* out );
 Image* image_loadOMP( const char *file_name );
 
+double avg_time;
+
 
 void stencilCode( Image* in, Image* out ) {
 	double* buffer = (double*)calloc(in->width*in->height,sizeof(double));
 	double min = 1.0, max = 0.0;
 	    
 	int x,y;
+	clock_t begin1 = clock();
 	// for each row, column, calculating the new value using Stencil Matrix (laplacian)
 	for ( y = 1; y < in->height-2; y++ ) {
 		for( x = 1; x < in->width-2; x++ ) {
@@ -44,8 +47,16 @@ void stencilCode( Image* in, Image* out ) {
 			image_get_pixeld(in, x+1, y+1 )));
 	
 			buffer[y*in->width+x] = val;
-			if ( val > max ) max = val;
-			if ( val < min ) min = val;
+		}
+	}
+	clock_t end = clock();
+	double time_spent = (double)(end - begin1) / CLOCKS_PER_SEC;
+	avg_time += (time_spent*CLOCKS_PER_SEC);
+
+	for ( y = 1; y < in->height-2; y++ ) {
+		for( x = 1; x < in->width-2; x++ ) {
+			if ( buffer[y*in->width+x] > max ) max = buffer[y*in->width+x];
+			if ( buffer[y*in->width+x] < min ) min = buffer[y*in->width+x];
 		}
 	}
 
@@ -53,6 +64,8 @@ void stencilCode( Image* in, Image* out ) {
 	for ( y = 0; y < in->height; y++ ) {
 		for( x = 0; x < in->width; x++ ) {
 			double val = MAX_BRIGHTNESS * (buffer[y*in->width+x] - min) / (max-min);
+			if (val > 15)
+				val = 255;
 			image_set_pixel( out, x, y, val );
 		}
 	}

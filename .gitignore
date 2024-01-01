@@ -2,3 +2,4 @@
 *.out
 output_*
 .vscode
+cuda_by_hand

@@ -9,8 +9,6 @@
 #include <algorithm>
 #include "kernel.hu"
 
-#define BLOCK_X 16
-#define BLOCK_Y 16
 #define ORDER 1
 
 #define MAX_BRIGHTNESS 255
@@ -202,7 +200,8 @@ int main( int argc, char* argv[] )
 	cudaCheckReturn(cudaEventCreate(&start));
 	cudaCheckReturn(cudaEventCreate(&stop));
 	dim3 dimBlock( BLOCK_X, BLOCK_Y );
-	dim3 dimGrid( (img1->width) / dimBlock.x, (img1->height) / dimBlock.y );
+	dim3 dimGrid1( (img1->width) / dimBlock.x / ITER_X, (img1->height) / dimBlock.y / ITER_Y );
+	dim3 dimGrid2( (img1->width) / dimBlock.x , (img1->height) / dimBlock.y  );
 	unsigned *h_buf = (unsigned *)malloc(img1->height * img1->width * sizeof( unsigned ) );
 
 	cudaCheckReturn(cudaMalloc( (void**)&d_in, img1->height * img1->width * sizeof( unsigned ) ));
@@ -214,29 +213,28 @@ int main( int argc, char* argv[] )
 	{
 		cudaEventRecord(start, 0);
 
-		stencilCUDA<<<dimGrid, dimBlock>>>( img1->width, img1->height, d_in, d_out, d_buf );
+		stencilCUDA<<<dimGrid1, dimBlock>>>( img1->width, img1->height, d_in, d_out, d_buf );
 		cudaCheckKernel();
 
 		cudaEventRecord(stop, 0);
 		cudaEventSynchronize(stop);
 		cudaCheckReturn(cudaEventElapsedTime(&gpu_time, start, stop));
-		printf("iteration: %d \t time: %f msec\n",i, gpu_time);
+		// printf("iteration: %d \t time: %f msec\n",i, gpu_time);
 		avg_time += gpu_time;
-
 
 		/*
 		 * Post, non-stencil part
-		 */		
+		 */	
 		cudaMemcpy( h_buf, d_buf, img1->height * img1->width * sizeof( unsigned ), cudaMemcpyDeviceToHost );
 		auto result = std::minmax_element(h_buf, h_buf + img1->height * img1->width);
 		// printf("min: %d, max: %d\n", *result.first, *result.second);
 		
-		produceOutputCUDA<<<dimGrid, dimBlock>>>(img1->width, img1->height, *result.first,  *result.second, d_out, d_buf);
+		produceOutputCUDA<<<dimGrid2, dimBlock>>>(img1->width, img1->height, *result.first,  *result.second, d_out, d_buf);
 		cudaCheckKernel();
 
 	}
 	cudaCheckReturn(cudaMemcpy( img3->data, d_out, img1->height * img1->width * sizeof( unsigned ), cudaMemcpyDeviceToHost ));	
-	printf("++++++++++++++++++++++++++++++++++++\nAvg timing is: %f sec\n++++++++++++++++++++++++++++++++++++\n",(avg_time/CLOCKS_PER_SEC)/ITERATION_NUM);
+	printf("++++++++++++++++++++++++++++++++++++\nExecute %d timing is: %f sec\n++++++++++++++++++++++++++++++++++++\n",ITERATION_NUM, avg_time/CLOCKS_PER_SEC);
 	image_save( img3, "output_cuda_scratch.png" );
 
 	//clock_t end1 = clock();

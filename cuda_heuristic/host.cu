@@ -6,6 +6,7 @@
 #include <time.h>
 #include <assert.h>
 #include <iostream>
+#include <algorithm>
 #include "kernel.hu"
 
 #define BLOCK_X 16
@@ -14,7 +15,7 @@
 
 #define MAX_BRIGHTNESS 255
 #define GetValue(a) ((a)&0xff)
-#define ITERATION_NUM 1
+#define ITERATION_NUM 100
 
 #define png_infopp_NULL (png_infopp)NULL
 #define int_p_NULL (int*)NULL
@@ -86,6 +87,10 @@ Image* image_load( const char *file_name ) {
 	png_init_io(png_ptr, fp);
 	png_read_png(png_ptr, info_ptr, PNG_TRANSFORM_STRIP_16 | PNG_TRANSFORM_PACKING | PNG_TRANSFORM_EXPAND | PNG_TRANSFORM_STRIP_ALPHA, NULL);
 
+    int channel = png_get_channels(png_ptr, info_ptr);
+    int depth = png_get_bit_depth(png_ptr, info_ptr);
+    int color = png_get_color_type(png_ptr, info_ptr);
+    printf("channel : %d, depth : %d, color : %d\n",channel,depth,color);
 	png_bytep* row_pointers = png_get_rows(png_ptr, info_ptr);
 	height = png_get_image_height(png_ptr, info_ptr);
 	width = png_get_image_width(png_ptr, info_ptr);
@@ -101,6 +106,8 @@ Image* image_load( const char *file_name ) {
 			image_set_pixel(image, x, y, c);
 		}
 	}
+
+	
 	   
 	png_destroy_read_struct(&png_ptr, &info_ptr, png_infopp_NULL);
 	fclose(fp);
@@ -186,15 +193,9 @@ int main( int argc, char* argv[] )
 	printf("++++++++++++++++++++++++++++++++++\n\tAccelerated Version\t\n++++++++++++++++++++++++++++++++++\n");	
 	printf("time spent in sequential code with %d iterations\n", ITERATION_NUM);
 	int i;
-	Image* dev_img1 = (Image*)malloc(sizeof(Image));
-	Image* dev_img3 = (Image*)malloc(sizeof(Image));
 	unsigned *d_in;
 	unsigned *d_out;
-	dev_img1->width = img1->width;
-	dev_img1->height = img1->height;
-	dev_img3->width = img1->width;
-	dev_img3->height = img1->height;
-
+	unsigned *d_buf;
 	float gpu_time = 0.0f;
 	float avg_time = 0.0f;
 	cudaEvent_t start, stop;
@@ -202,16 +203,18 @@ int main( int argc, char* argv[] )
 	cudaCheckReturn(cudaEventCreate(&stop));
 	dim3 dimBlock( BLOCK_X, BLOCK_Y );
 	dim3 dimGrid( (img1->width) / dimBlock.x, (img1->height) / dimBlock.y );
+	unsigned *h_buf = (unsigned *)malloc(img1->height * img1->width * sizeof( unsigned ) );
 
 	cudaCheckReturn(cudaMalloc( (void**)&d_in, img1->height * img1->width * sizeof( unsigned ) ));
 	cudaCheckReturn(cudaMalloc( (void**)&d_out, img1->height * img1->width * sizeof( unsigned ) ));
+	cudaCheckReturn(cudaMalloc( (void**)&d_buf, img1->height * img1->width * sizeof( unsigned ) ));
 	cudaCheckReturn(cudaMemcpy( d_in, img1->data, img1->height * img1->width * sizeof( unsigned ), cudaMemcpyHostToDevice ));
 	//repeating process to extract best time
 	for ( i = 1; i<=ITERATION_NUM; i++)
 	{
 		cudaEventRecord(start, 0);
 
-		stencilCUDA<<<dimGrid, dimBlock>>>( img1->width, img1->height, d_in, d_out );
+		stencilCUDA<<<dimGrid, dimBlock>>>( img1->width, img1->height, d_in, d_out, d_buf );
 		cudaCheckKernel();
 
 		cudaEventRecord(stop, 0);
@@ -219,12 +222,21 @@ int main( int argc, char* argv[] )
 		cudaCheckReturn(cudaEventElapsedTime(&gpu_time, start, stop));
 		printf("iteration: %d \t time: %f msec\n",i, gpu_time);
 		avg_time += gpu_time;
+
+		/*
+		 * Post, non-stencil part
+		 */	
+		cudaMemcpy( h_buf, d_buf, img1->height * img1->width * sizeof( unsigned ), cudaMemcpyDeviceToHost );
+		auto result = std::minmax_element(h_buf, h_buf + img1->height * img1->width);
+		// printf("min: %d, max: %d\n", *result.first, *result.second);
+		
+		produceOutputCUDA<<<dimGrid, dimBlock>>>(img1->width, img1->height, *result.first,  *result.second, d_out, d_buf);
+		cudaCheckKernel();
+
 	}
 	cudaCheckReturn(cudaMemcpy( img3->data, d_out, img1->height * img1->width * sizeof( unsigned ), cudaMemcpyDeviceToHost ));	
-	printf("++++++++++++++++++++++++++++++++++++\nAvg timing is: %f sec\n++++++++++++++++++++++++++++++++++++\n",(avg_time/CLOCKS_PER_SEC)/ITERATION_NUM);
+	printf("++++++++++++++++++++++++++++++++++++\nExecute %d timing is: %f sec\n++++++++++++++++++++++++++++++++++++\n",ITERATION_NUM, avg_time/CLOCKS_PER_SEC);
 	image_save( img3, "output_cuda_scratch.png" );
-	cudaFree( dev_img1 );
-	cudaFree( dev_img3 );
 
 	//clock_t end1 = clock();
 	//double time_spent1 = (double)(end1 - avg_time) / CLOCKS_PER_SEC;

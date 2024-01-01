@@ -3,4 +3,4 @@ all:
 clean: 
 	rm cuda_by_hand output*
 cuda: all
-	./cuda_by_hand rem.png
+	./cuda_by_hand ../rem.png
